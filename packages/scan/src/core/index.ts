@@ -225,7 +225,7 @@ export interface Internals {
   instrumentation: ReturnType<typeof createInstrumentation> | null;
   componentAllowList: WeakMap<ComponentType<unknown>, Options> | null;
   options: Signal<Options>;
-  scheduledOutlines: Map<Fiber, Outline>; // we clear t,his nearly immediately, so no concern of mem leak on the fiber
+  scheduledOutlines: Map<Fiber, Outline>; // we clear this nearly immediately, so no concern of mem leak on the fiber
   // outlines at the same coordinates always get merged together, so we pre-compute the merge ahead of time when aggregating in activeOutlines
   activeOutlines: Map<OutlineKey, Outline>; // we re-use the outline object on the scheduled outline
   onRender: ((fiber: Fiber, renders: Array<Render>) => void) | null;
@@ -621,6 +621,7 @@ export const useScan = (options: Options = {}) => {
   start();
 };
 
+// Decorate ReactScanInternals.onRender with the passed in _onRender
 export const onRender = (
   type: unknown,
   _onRender: (fiber: Fiber, renders: Array<Render>) => void,

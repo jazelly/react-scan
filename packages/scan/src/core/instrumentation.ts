@@ -392,30 +392,6 @@ export const isRenderUnnecessary = (fiber: Fiber) => {
   return true;
 };
 
-// // re-implement this in new-outlines
-// const shouldRunUnnecessaryRenderCheck = () => {
-//   // yes, this can be condensed into one conditional, but ifs are easier to reason/build on than long boolean expressions
-//   if (!ReactScanInternals.options.value.trackUnnecessaryRenders) {
-//     return false;
-//   }
-
-//   // only run unnecessaryRenderCheck when monitoring is active in production if the user set dangerouslyForceRunInProduction
-//   if (
-//     getIsProduction() &&
-//     Store.monitor.value &&
-//     ReactScanInternals.options.value.dangerouslyForceRunInProduction &&
-//     ReactScanInternals.options.value.trackUnnecessaryRenders
-//   ) {
-//     return true;
-//   }
-
-//   if (getIsProduction() && Store.monitor.value) {
-//     return false;
-//   }
-
-//   return ReactScanInternals.options.value.trackUnnecessaryRenders;
-// };
-
 const TRACK_UNNECESSARY_RENDERS = false;
 
 export interface RenderData {
@@ -474,7 +450,7 @@ const trackRender = (
 
 export const createInstrumentation = (
   instanceKey: string,
-  config: InstrumentationConfig,
+  config: InstrumentationConfig, // config must come with onRender, onCommitStart, onCommitFinish etc
 ) => {
   const instrumentation: Instrumentation = {
     // this will typically be false, but in cases where a user provides showToolbar: true, this will be true
@@ -489,31 +465,37 @@ export const createInstrumentation = (
   if (!inited) {
     inited = true;
 
+    // patch/create RDT hook in a bippy way
+    // we decorate the bippy RDT hook with provided logic
+    // You can think these as the the other half of the RDT implementation to do logic
+    // where the first half is the RDT hook itself to store data
     instrument({
       name: 'react-scan',
       onActive: config.onActive,
+      // React calls this function after commit, and then this one after original onCommitFiberRoot if there's any
       onCommitFiberRoot(_rendererID, root) {
         instrumentation.fiberRoots.add(root);
-        // for now we always track everything for notifications, it may be worth it to make this configurable
-        // if (
-        //   ReactScanInternals.instrumentation?.isPaused.value &&
-        //   (Store.inspectState.value.kind === "inspect-off" ||
-        //     Store.inspectState.value.kind === "uninitialized") &&
-        //   !config.forceAlwaysTrackRenders
-        // ) {
-        //   return;
-        // }
+        // all the instrumentation instances created in this app
+        // currently only 2, one is react-scan and the other is monitor
         const allInstances = getAllInstances();
+        // this makes sure all the instrumentation's onCommitStart is called
         for (const instance of allInstances) {
           instance.config.onCommitStart();
         }
 
+        // everytime React commits, we traverse all the fibers in the app
+        // You can imagine we want to cache some data so that when user
+        // hovers on a component, it can instantly shows the fiber data
         traverseRenderedFibers(
           root.current,
+          // NOTICE!: this function taken in by traverseRenderedFibers is
+          // onRender in bippy context. Not the same as the onRender in the config
+          // This is called with different phases
           (fiber: Fiber, phase: 'mount' | 'update' | 'unmount') => {
             const type = getType(fiber.type);
             if (!type) return null;
 
+            // Just simply think this as react-scan-devtools instrumentation instance
             const allInstances = getAllInstances();
             const validInstancesIndicies: Array<number> = [];
             for (let i = 0, len = allInstances.length; i < len; i++) {
@@ -523,8 +505,8 @@ export const createInstrumentation = (
             }
             if (!validInstancesIndicies.length) return null;
 
+            // If we trackChanges in any instrumentation, we need record changes
             const changes: Array<Change> = [];
-
             if (allInstances.some((instance) => instance.config.trackChanges)) {
               const changesProps = collectPropsChanges(fiber).changes;
               const changesState = collectStateChanges(fiber).changes;
@@ -577,14 +559,12 @@ export const createInstrumentation = (
 
             const fps = getFPS();
             const render: Render = {
-              phase: RENDER_PHASE_STRING_TO_ENUM[phase],
+              phase: RENDER_PHASE_STRING_TO_ENUM[phase], // unmount, mount, update
               componentName: getDisplayName(type),
               count: 1,
               changes,
               time: fiberSelfTime,
               forget: hasMemoCache(fiber),
-              // todo: allow this to be toggle-able through toolbar
-              // todo: performance optimization: if the last fiber measure was very off screen, do not run isRenderUnnecessary
               unnecessary: TRACK_UNNECESSARY_RENDERS
                 ? isRenderUnnecessary(fiber)
                 : null,
@@ -609,6 +589,7 @@ export const createInstrumentation = (
             for (let i = 0, len = validInstancesIndicies.length; i < len; i++) {
               const index = validInstancesIndicies[i];
               const instance = allInstances[index];
+              // this config.onRender takes the render object that we formed above
               instance.config.onRender(fiber, [render]);
             }
           },

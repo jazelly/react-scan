@@ -532,7 +532,6 @@ export const isValidFiber = (fiber: Fiber) => {
 };
 export const initReactScanInstrumentation = (setupToolbar: () => void) => {
   if (hasStopped()) return;
-  // todo: don't hardcode string getting weird ref error in iife when using process.env
   let schedule: ReturnType<typeof requestAnimationFrame>;
   let mounted = false;
 
@@ -554,6 +553,7 @@ export const initReactScanInstrumentation = (setupToolbar: () => void) => {
   };
 
   const instrumentation = createInstrumentation('react-scan-devtools-0.1.0', {
+    // Lifecycle hooks for our instrumentation on RDT
     onCommitStart: () => {
       ReactScanInternals.options.value.onCommitStart?.();
     },
@@ -574,9 +574,14 @@ export const initReactScanInstrumentation = (setupToolbar: () => void) => {
     },
     isValidFiber,
     onRender: (fiber, renders) => {
+      // instance.config.onRender
+      // the intake fiber can be any fiber node in the traverse
+      // renders is a list of render object containing phase, componentName etc.
+      // It's custom data for react-scan implementation
       if (isCompositeFiber(fiber)) {
         Store.interactionListeningForRenders?.(fiber, renders);
       }
+      // ReactScanInternals.instrumentation is just the one from createInstrumentation
       const isOverlayPaused =
         ReactScanInternals.instrumentation?.isPaused.value;
       const isInspectorInactive =
@@ -602,6 +607,7 @@ export const initReactScanInstrumentation = (setupToolbar: () => void) => {
         reportRenderToListeners(fiber);
       }
 
+      // options
       ReactScanInternals.options.value.onRender?.(fiber, renders);
     },
     onCommitFinish: () => {
@@ -613,5 +619,7 @@ export const initReactScanInstrumentation = (setupToolbar: () => void) => {
     },
     trackChanges: false,
   });
+
+  // Sets the created instrumentation instance to ReactScanInternals
   ReactScanInternals.instrumentation = instrumentation;
 };

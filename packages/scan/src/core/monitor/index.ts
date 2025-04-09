@@ -152,6 +152,7 @@ export const startMonitoring = (): void => {
     forceAlwaysTrackRenders: true,
   });
 
+  // Sets the created instrumentation instance to ReactScanInternals
   ReactScanInternals.instrumentation = instrumentation;
 };
 
